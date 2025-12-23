@@ -1,0 +1,30 @@
+{
+  "madmax": {
+    "couleur": [
+      255,
+      50,
+      50
+    ]
+  },
+  "bob": {
+    "couleur": [
+      0,
+      255,
+      0
+    ]
+  },
+  "nonosapiens": {
+    "couleur": [
+      0,
+      255,
+      0
+    ]
+  },
+  "poussmouss": {
+    "couleur": [
+      0,
+      100,
+      255
+    ]
+  }
+}

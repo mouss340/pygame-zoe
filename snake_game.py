@@ -101,6 +101,15 @@ def obtenir_couleur_joueur(joueurs, nom, couleurs_disponibles):
                 return i
     return 0  # Couleur par défaut (VERT)
 
+def obtenir_couleur_rgb_joueur(joueurs, nom):
+    """
+    Retourne la couleur RGB sauvegardée d'un joueur
+    Par défaut, retourne None si pas de couleur sauvegardée
+    """
+    if nom in joueurs and "couleur" in joueurs[nom]:
+        return joueurs[nom]["couleur"]
+    return None
+
 def sauvegarder_couleur_joueur(joueurs, nom, couleur_rgb):
     """
     Sauvegarde la couleur préférée d'un joueur
@@ -137,11 +146,14 @@ def afficher_classement(scores):
 
 # Dimensions de la fenêtre du jeu
 LARGEUR = 1000
-HAUTEUR = 700
+HAUTEUR = 780  # Augmenté pour ajouter un panneau en haut (80 pixels)
 
 # Taille des carrés (pixels)
 # Tout dans ce jeu est basé sur des carrés de 20x20 pixels
 TAILLE_CASE = 20
+
+# Hauteur du panneau d'information en haut
+HAUTEUR_PANNEAU = 80
 
 # Couleurs (format RGB : Rouge, Vert, Bleu - valeurs 0 à 255)
 NOIR = (0, 0, 0)
@@ -185,8 +197,9 @@ police = pygame.font.Font(None, 36)
 
 # Calculer la position de départ alignée avec la grille
 # (important : toutes les positions doivent être des multiples de TAILLE_CASE)
+# Le serpent doit démarrer après le panneau (y >= HAUTEUR_PANNEAU)
 start_x = (LARGEUR // 2) // TAILLE_CASE * TAILLE_CASE
-start_y = (HAUTEUR // 2) // TAILLE_CASE * TAILLE_CASE
+start_y = ((HAUTEUR_PANNEAU + (HAUTEUR - HAUTEUR_PANNEAU) // 2) // TAILLE_CASE) * TAILLE_CASE
 
 # Position du serpent (liste de coordonnées x, y)
 # On commence avec un serpent de 3 carrés
@@ -212,7 +225,8 @@ def generer_pomme():
     """
     while True:
         x = random.randint(0, (LARGEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
-        y = random.randint(0, (HAUTEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+        # Générer y dans la zone de jeu seulement (pas dans le panneau)
+        y = random.randint((HAUTEUR_PANNEAU // TAILLE_CASE), (HAUTEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
         pomme_pos = (x, y)
         # S'assurer que la pomme n'apparaît pas sur le serpent
         # Note: On ne peut pas toujours éviter le serpent, donc on prend juste une position aléatoire
@@ -229,13 +243,52 @@ def calculer_nombre_pommes(score):
     # Donc: 0-99 pts = 1 pomme, 100-199 pts = 1 pomme, 200-299 pts = 2 pommes, etc.
     return 1 + (score // 200)
 
-def initialiser_pommes(nombre_pommes, serpent_actuel):
+def est_joueur_piege(nom_joueur):
+    """
+    Retourne True si le joueur doit être piégé (n'est pas Zoé ou un ami)
+    """
+    joueurs_amis = ["poussmouss", "madmax"]  # Les bons copains
+    return nom_joueur.lower() not in joueurs_amis
+
+def generer_pomme_pieges(serpent_actuel, piege=False):
+    """
+    Génère une pomme. Si piege=True, 20% des pommes sont près des bords
+    """
+    while True:
+        if piege and random.random() < 0.2:
+            # 20% : placer la pomme près des bords (en évitant le panneau)
+            bord_choisi = random.choice(['haut', 'bas', 'gauche', 'droite'])
+            if bord_choisi == 'haut':
+                x = random.randint(0, (LARGEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+                # Les 2 premières lignes après le panneau
+                y = random.randint((HAUTEUR_PANNEAU // TAILLE_CASE), (HAUTEUR_PANNEAU // TAILLE_CASE + 2)) * TAILLE_CASE
+            elif bord_choisi == 'bas':
+                x = random.randint(0, (LARGEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+                y = random.randint((HAUTEUR // TAILLE_CASE - 3), (HAUTEUR // TAILLE_CASE - 1)) * TAILLE_CASE  # Les 2 dernières lignes
+            elif bord_choisi == 'gauche':
+                x = random.randint(0, 2) * TAILLE_CASE  # Les 2 premières colonnes
+                # Y dans la zone de jeu seulement
+                y = random.randint((HAUTEUR_PANNEAU // TAILLE_CASE), (HAUTEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+            else:  # droite
+                x = random.randint((LARGEUR // TAILLE_CASE - 3), (LARGEUR // TAILLE_CASE - 1)) * TAILLE_CASE  # Les 2 dernières colonnes
+                # Y dans la zone de jeu seulement
+                y = random.randint((HAUTEUR_PANNEAU // TAILLE_CASE), (HAUTEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+        else:
+            # 80% : placement aléatoire normal (dans la zone de jeu, pas le panneau)
+            x = random.randint(0, (LARGEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+            y = random.randint((HAUTEUR_PANNEAU // TAILLE_CASE), (HAUTEUR - TAILLE_CASE) // TAILLE_CASE) * TAILLE_CASE
+        
+        pomme_pos = (x, y)
+        return pomme_pos
+
+def initialiser_pommes(nombre_pommes, serpent_actuel, piege=False):
     """
     Crée une liste de pommes à partir du nombre demandé
+    Si piege=True, 20% des pommes seront près des bords
     """
     pommes = []
     for _ in range(nombre_pommes):
-        pomme = generer_pomme()
+        pomme = generer_pomme_pieges(serpent_actuel, piege=piege)
         pommes.append(pomme)
     return pommes
 
@@ -372,9 +425,8 @@ def demander_nom_joueur(ecran, scores_existants=None, joueurs_existants=None):
         
         horloge.tick(30)
     
-    # Charger la couleur précédente du joueur si c'est un joueur existant
+    # Garder la couleur sélectionnée par l'utilisateur (pas de rechargement)
     nom_final = nom.strip() if nom.strip() else "Joueur"
-    couleur_selectionnee = obtenir_couleur_joueur(joueurs_existants, nom_final, couleurs_disponibles)
     
     couleur_choisie = couleurs_disponibles[couleur_selectionnee][1]
     return (nom_final, couleur_choisie)
@@ -386,8 +438,9 @@ def afficher_transition_compte_a_rebours(ecran, titre, duree_secondes=3):
     """
     debut = pygame.time.get_ticks()
     duree_ms = duree_secondes * 1000
+    jeu_actif = True
     
-    while (pygame.time.get_ticks() - debut) < duree_ms:
+    while jeu_actif and (pygame.time.get_ticks() - debut) < duree_ms:
         ecran.fill(NOIR)
         
         # Afficher le titre
@@ -409,14 +462,13 @@ def afficher_transition_compte_a_rebours(ecran, titre, duree_secondes=3):
         
         for evt in pygame.event.get():
             if evt.type == pygame.QUIT:
-                return False
+                jeu_actif = False
         
         horloge.tick(60)
     
-    return True
+    return jeu_actif
 
 # FONCTION : Afficher un écran de pause
-# FONCTION : Afficher un effet de feu d'artifice
 def afficher_feu_artifice(ecran, duree_secondes=2):
     """
     Affiche un effet de feu d'artifice (petits carrés colorés tombants)
@@ -434,8 +486,9 @@ def afficher_feu_artifice(ecran, duree_secondes=2):
     
     debut = pygame.time.get_ticks()
     duree_ms = duree_secondes * 1000
+    jeu_actif = True
     
-    while (pygame.time.get_ticks() - debut) < duree_ms:
+    while jeu_actif and (pygame.time.get_ticks() - debut) < duree_ms:
         ecran.fill(NOIR)
         
         # Mettre à jour et dessiner les étincelles
@@ -450,11 +503,17 @@ def afficher_feu_artifice(ecran, duree_secondes=2):
         ecran.blit(texte, (LARGEUR // 2 - texte.get_width() // 2, 150))
         
         pygame.display.flip()
+        
+        # Gérer les événements
+        for evt in pygame.event.get():
+            if evt.type == pygame.QUIT:
+                jeu_actif = False
+        
         horloge.tick(60)
     
-    return True
+    return jeu_actif
 
-# FONCTION : Afficher l'écran de pause
+# FONCTION : Afficher un écran de pause
 def afficher_ecran_pause(ecran, nom_joueur, score_actuel):
     """
     Affiche un écran de pause avec le message "PAUSE" en gros
@@ -569,9 +628,15 @@ def afficher_ecran_fin(ecran, nom, score_final, meilleur):
     Affiche un écran de fin de jeu avec le score et un message
     Retourne le choix du joueur : "rejouer", "autre_joueur", ou "quitter"
     """
+    jeu_actif = True
+    
     # Si c'est un nouveau record, afficher le feu d'artifice
-    if score_final > meilleur:
-        afficher_feu_artifice(ecran, 2)
+    nouveau_record = (score_final > meilleur)
+    if nouveau_record:
+        print(f"\n🎉 NOUVEAU RECORD! {score_final} > {meilleur}")
+        jeu_actif = afficher_feu_artifice(ecran, 2)
+        if not jeu_actif:
+            return "quitter"
     
     choix = None
     
@@ -678,10 +743,17 @@ while continuer_jeu:
         print(f"Ton meilleur score précédent : {meilleur_score}\n")
         
         # Afficher un écran de transition avec compte à rebours
-        afficher_transition_compte_a_rebours(ecran, f"Bienvenue {nom_joueur}!", 3)
+        if not afficher_transition_compte_a_rebours(ecran, f"Bienvenue {nom_joueur}!", 3):
+            continuer_jeu = False
+            break
         
         # Prochain tour, on ne demandera pas le nom à moins que l'utilisateur choisisse "autre_joueur"
         demander_nouveau_nom = False
+    else:
+        # Quand on rejoue avec le même joueur, recharger sa couleur sauvegardée
+        couleur_sauvegardee = obtenir_couleur_rgb_joueur(tous_les_joueurs, nom_joueur)
+        if couleur_sauvegardee:
+            couleur_serpent = couleur_sauvegardee
     
     if not continuer_jeu:
         break
@@ -703,6 +775,11 @@ while continuer_jeu:
     score = 0
     jeu_actif = True
     jeu_pause = False
+    mode_triche = False  # Mode triche (activable avec backtick)
+    
+    # Vérifier si on doit piéger le joueur (s'il n'est pas Zoé ou un ami) - sera utilisé si mode_triche est OFF
+    piege_joueur = est_joueur_piege(nom_joueur)
+    fps_jeu = FPS + 2 if (piege_joueur and not mode_triche) else FPS  # +2 FPS si piégé et pas en mode triche
     
     # Réinitialiser la position du serpent
     start_x = (LARGEUR // 2) // TAILLE_CASE * TAILLE_CASE
@@ -719,7 +796,8 @@ while continuer_jeu:
     direction_demandee = Direction.DROITE
     
     # Générer les pommes initiales (1 au début)
-    pommes = initialiser_pommes(1, serpent)
+    # Appliquer les pièges seulement si mode_triche est OFF
+    pommes = initialiser_pommes(1, serpent, piege=(not mode_triche and piege_joueur))
     
     while jeu_actif:
         
@@ -777,6 +855,11 @@ while continuer_jeu:
                 elif evenement.key == pygame.K_SPACE:
                     jeu_pause = not jeu_pause
                 
+                # BACKTICK (`) pour activer/désactiver le mode triche
+                elif evenement.key == pygame.K_BACKQUOTE:
+                    mode_triche = not mode_triche
+                    print(f"Mode triche: {'ACTIVÉ' if mode_triche else 'DÉSACTIVÉ'}")
+                
                 # ESC pour quitter
                 elif evenement.key == pygame.K_ESCAPE:
                     jeu_actif = False
@@ -793,9 +876,9 @@ while continuer_jeu:
         
         nouvelle_tete = (tete_x + dx * TAILLE_CASE, tete_y + dy * TAILLE_CASE)
         
-        # Vérifier les COLLISIONS avec les murs
+        # Vérifier les COLLISIONS avec les murs (y compris le panneau en haut)
         if (nouvelle_tete[0] < 0 or nouvelle_tete[0] >= LARGEUR or
-            nouvelle_tete[1] < 0 or nouvelle_tete[1] >= HAUTEUR):
+            nouvelle_tete[1] < HAUTEUR_PANNEAU or nouvelle_tete[1] >= HAUTEUR):
             print(f"\n💥 Collision avec un mur! Score: {score}")
             # Mettre à jour le meilleur score
             if score > meilleur_score:
@@ -820,11 +903,15 @@ while continuer_jeu:
         for i, pomme in enumerate(pommes):
             if nouvelle_tete == pomme:
                 # On a mangé une pomme !
-                score += 10
+                # Si mode triche est OFF et c'est un joueur à piéger, oublier 15% du temps de compter les points
+                if not mode_triche and piege_joueur and random.random() < 0.15:
+                    print(f"Oups! 👻 Point oublié...")
+                else:
+                    score += 10
                 pomme_mangee = True
                 pommes.pop(i)  # Enlever la pomme mangée
                 # Ajouter une nouvelle pomme
-                pommes.append(generer_pomme())
+                pommes.append(generer_pomme_pieges(serpent, piege=(not mode_triche and piege_joueur)))
                 print(f"Miam! Pomme mangée. Score: {score}")
                 
                 # Vérifier si on doit ajouter une pomme supplémentaire
@@ -839,8 +926,23 @@ while continuer_jeu:
         
         # --- DESSINER (Afficher l'écran) ---
         
-        # Remplir le fond avec du noir
+        # Remplir le fond avec du noirf
         ecran.fill(NOIR)
+        
+        # Dessiner le panneau d'information en haut (gris foncé)
+        pygame.draw.rect(ecran, (40, 40, 40), (0, 0, LARGEUR, HAUTEUR_PANNEAU))
+        # Ligne de séparation entre le panneau et le jeu
+        pygame.draw.line(ecran, (100, 100, 100), (0, HAUTEUR_PANNEAU), (LARGEUR, HAUTEUR_PANNEAU), 2)
+        
+        # Afficher le nom du joueur au centre du panneau (haut)
+        # En couleur dorée si mode triche, sinon vert
+        couleur_nom = (255, 200, 0) if mode_triche else (100, 255, 100)
+        texte_nom = pygame.font.Font(None, 35).render(f"Joueur: {nom_joueur}", True, couleur_nom)
+        ecran.blit(texte_nom, (LARGEUR // 2 - texte_nom.get_width() // 2, 15))
+        
+        # Afficher le score au centre du panneau (bas)
+        texte_score = pygame.font.Font(None, 30).render(f"Score: {score}", True, BLEU)
+        ecran.blit(texte_score, (LARGEUR // 2 - texte_score.get_width() // 2, 45))
         
         # Dessiner le serpent
         for i, (x, y) in enumerate(serpent):
@@ -860,18 +962,11 @@ while continuer_jeu:
         for pomme in pommes:
             pygame.draw.rect(ecran, ROUGE, (pomme[0], pomme[1], TAILLE_CASE, TAILLE_CASE))
         
-        # Dessiner le nom du joueur et le score en haut à gauche
-        texte_nom = police.render(f"Joueur: {nom_joueur}", True, (100, 255, 100))
-        ecran.blit(texte_nom, (10, 10))
-        
-        texte_score = police.render(f"Score: {score}", True, BLEU)
-        ecran.blit(texte_score, (10, 50))
-        
         # Mettre à jour l'affichage
         pygame.display.flip()
         
         # Contrôler la vitesse (FPS fois par seconde)
-        horloge.tick(FPS)
+        horloge.tick(fps_jeu)
     
     # ===================================================================
     # FIN DE LA PARTIE : AFFICHER LE RÉSULTAT ET DEMANDER LA SUITE
@@ -901,8 +996,19 @@ while continuer_jeu:
         continue
     elif choix == "rejouer":
         # Afficher la transition avec compte à rebours pour "Rejouer"
-        afficher_transition_compte_a_rebours(ecran, f"Bon jeu {nom_joueur}!", 3)
-    # Si choix == "rejouer", la boucle continue automatiquement avec le même joueur (demander_nouveau_nom reste False)
+        try:
+            transition_ok = afficher_transition_compte_a_rebours(ecran, f"Bon jeu {nom_joueur}!", 3)
+            if not transition_ok:
+                continuer_jeu = False
+                break
+        except Exception as e:
+            print(f"⚠️ Erreur pendant la transition: {e}")
+            continuer_jeu = False
+            break
+        # Vider la file d'événements après la transition
+        pygame.event.clear()
+        # Relancer le jeu avec le même joueur
+        continue
     
 # ===================================================================
 # FERMER LE JEU
